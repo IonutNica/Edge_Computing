@@ -1,0 +1,623 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from google.colab import files
+import pandas as pd
+
+# Încarcă fișierul Excel din sistemul local
+uploaded = files.upload()
+
+# Citește fișierul Excel într-un dataframe pandas
+df = pd.read_excel(next(iter(uploaded.keys())))
+
+# Statistici descriptive
+print(df.describe())
+
+# Convertim coloana `decision_outcome` în valori numerice (1 pentru "Effective", 0 pentru "Not Effective")
+df["decision_outcome"] = df["decision_outcome"].map({"Effective": 1, "Not Effective": 0})
+
+# Verifică valorile extreme
+print(df.describe())
+
+# Verifică tipurile de date
+print(df.dtypes)
+
+# Dacă `financial_metric` conține valori cu puncte în loc de numere corecte, le putem converti
+df["financial_metric"] = pd.to_numeric(df["financial_metric"], errors="coerce")
+
+# Dacă au apărut NaN-uri după conversie, le eliminăm
+df = df.dropna()
+
+# Matricea de corelație
+plt.figure(figsize=(12,8))
+sns.heatmap(df.corr(), annot=True, cmap="Purples", fmt=".2f", linewidths=0.5)
+plt.title("Matricea de corelație între variabile")
+plt.show()
+
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.preprocessing import StandardScaler
+
+# Încarcă fișierul
+df = pd.read_excel("economic_management_dataset_corrected1.xlsx")
+
+# Creează variabilele derivate
+df["transaction_efficiency"] = df["system_throughput"] / df["transaction_volume"]
+df["latency_per_transaction"] = df["edge_processing_latency"] / df["transaction_volume"]
+df["utilization_to_efficiency_ratio"] = df["resource_utilization"] / df["workload_distribution_efficiency"]
+df["decision_quality_score"] = df["decision_accuracy"] * df["decision_outcome1"]
+
+# Selectăm doar coloanele numerice
+numeric_columns = df.select_dtypes(include=['float64', 'int64']).columns
+
+# Aplicăm Standardizare (Z-score normalization)
+scaler = StandardScaler()
+df_scaled = df.copy()
+df_scaled[numeric_columns] = scaler.fit_transform(df[numeric_columns])
+
+# Creează histogramă și boxplot pentru fiecare variabilă numerică (pe date scalate)
+for col in numeric_columns:
+    plt.figure(figsize=(12, 5))
+
+    # Histogramă
+    plt.subplot(1, 2, 1)
+    sns.histplot(df_scaled[col], kde=True, bins=30)
+    plt.title(f"Histogram of {col}")
+
+    # Boxplot
+    plt.subplot(1, 2, 2)
+    sns.boxplot(x=df_scaled[col])
+    plt.title(f"Boxplot of {col}")
+
+    plt.tight_layout()
+    plt.show()
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy.stats.mstats import winsorize
+from sklearn.preprocessing import StandardScaler
+
+# Încarcă fișierul
+#df = pd.read_excel("economic_management_dataset_corrected1.xlsx")
+
+# Creează variabilele derivate
+df["transaction_efficiency"] = df["system_throughput"] / df["transaction_volume"]
+df["latency_per_transaction"] = df["edge_processing_latency"] / df["transaction_volume"]
+df["utilization_to_efficiency_ratio"] = df["resource_utilization"] / df["workload_distribution_efficiency"]
+df["decision_quality_score"] = df["decision_accuracy"] * df["decision_outcome1"]
+
+# Selectăm doar coloanele numerice
+numeric_columns = df.select_dtypes(include=['float64', 'int64']).columns
+
+# Aplicăm Standardizare (Z-score normalization) înainte de Winsorizing
+scaler = StandardScaler()
+df_standardized = df.copy()
+df_standardized[numeric_columns] = scaler.fit_transform(df[numeric_columns])
+
+# Aplicăm Winsorizing pentru a limita outlierii la percentila 1% și 99%
+df_winsorized = df_standardized.copy()
+for col in numeric_columns:
+    df_winsorized[col] = winsorize(df_standardized[col], limits=[0.01, 0.01])  # 1% la fiecare capăt
+
+# Salvăm fișierul procesat (opțional)
+df_winsorized.to_excel("economic_management_winsorized.xlsx", index=False)
+
+# Verificăm efectul Winsorizing pe histograme și boxploturi
+for col in numeric_columns:
+    plt.figure(figsize=(12, 5))
+
+    # Histogramă
+    plt.subplot(1, 2, 1)
+    sns.histplot(df_winsorized[col], kde=True, bins=30)
+    plt.title(f"Histogram of {col} (Winsorized)")
+
+    # Boxplot
+    plt.subplot(1, 2, 2)
+    sns.boxplot(x=df_winsorized[col])
+    plt.title(f"Boxplot of {col} (Winsorized)")
+
+    plt.tight_layout()
+    plt.show()
+
+
+df_clipped = df_standardized.copy()
+for col in numeric_columns:
+    lower_percentile = df_standardized[col].quantile(0.01)
+    upper_percentile = df_standardized[col].quantile(0.99)
+    df_clipped[col] = np.clip(df_standardized[col], lower_percentile, upper_percentile)
+
+# Vizualizăm histograma și boxplot-ul
+for col in numeric_columns:
+    plt.figure(figsize=(12, 5))
+
+    plt.subplot(1, 2, 1)
+    sns.histplot(df_clipped[col], kde=True, bins=30)
+    plt.title(f"Histogram of {col} (Clipped at 1%-99%)")
+
+    plt.subplot(1, 2, 2)
+    sns.boxplot(x=df_clipped[col])
+    plt.title(f"Boxplot of {col} (Clipped at 1%-99%)")
+
+    plt.tight_layout()
+    plt.show()
+
+
+df_no_outliers = df_standardized.copy()
+for col in numeric_columns:
+    Q1 = df_standardized[col].quantile(0.25)
+    Q3 = df_standardized[col].quantile(0.75)
+    IQR = Q3 - Q1
+    lower_bound = Q1 - 1.5 * IQR
+    upper_bound = Q3 + 1.5 * IQR
+
+    # Eliminăm rândurile cu valori în afara limitelor IQR
+    df_no_outliers = df_no_outliers[(df_no_outliers[col] >= lower_bound) & (df_no_outliers[col] <= upper_bound)]
+
+# Vizualizăm histograma și boxplot-ul după eliminarea outlierilor
+for col in numeric_columns:
+    plt.figure(figsize=(12, 5))
+
+    plt.subplot(1, 2, 1)
+    sns.histplot(df_no_outliers[col], kde=True, bins=30)
+    plt.title(f"Histogram of {col}")
+
+    plt.subplot(1, 2, 2)
+    sns.boxplot(x=df_no_outliers[col])
+    plt.title(f"Boxplot of {col}")
+
+    plt.tight_layout()
+    plt.show()
+
+from scipy.stats.mstats import winsorize
+
+# Copiem dataset-ul curățat anterior
+df_winsorized_final = df_no_outliers.copy()
+
+# Aplicăm Winsorizing doar pe variabilele care încă au outlieri
+cols_with_outliers = ["financial_metric", "transaction_efficiency", "latency_per_transaction"]
+
+for col in cols_with_outliers:
+    df_winsorized_final[col] = winsorize(df_no_outliers[col], limits=[0.02, 0.02])  # 2% Winsorizing
+
+# Vizualizăm histogramă + boxplot după Winsorizing final
+for col in cols_with_outliers:
+    plt.figure(figsize=(12, 5))
+
+    plt.subplot(1, 2, 1)
+    sns.histplot(df_winsorized_final[col], kde=True, bins=30)
+    plt.title(f"Histogram of {col}")
+
+    plt.subplot(1, 2, 2)
+    sns.boxplot(x=df_winsorized_final[col])
+    plt.title(f"Boxplot of {col}")
+
+    plt.tight_layout()
+    plt.show()
+
+# Aplicăm Winsorizing 5% doar pe variabilele rămase
+df_winsorized_5 = df_winsorized_final.copy()
+
+cols_with_outliers = ["transaction_efficiency", "latency_per_transaction"]
+for col in cols_with_outliers:
+    df_winsorized_5[col] = winsorize(df_winsorized_final[col], limits=[0.05, 0.05])  # 5% Winsorizing
+
+# Vizualizăm histogramă + boxplot după Winsorizing final 5%
+for col in cols_with_outliers:
+    plt.figure(figsize=(12, 5))
+
+    plt.subplot(1, 2, 1)
+    sns.histplot(df_winsorized_5[col], kde=True, bins=30)
+    plt.title(f"Histogram of {col}")
+
+    plt.subplot(1, 2, 2)
+    sns.boxplot(x=df_winsorized_5[col])
+    plt.title(f"Boxplot of {col}")
+
+    plt.tight_layout()
+    plt.show()
+
+import pandas as pd
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+
+# Încarcă fișierul final cu datele procesate (fără outlieri)
+#df = pd.read_excel("economic_management_winsorized.xlsx")  # Înlocuiește cu numele fișierului final dacă e diferit
+
+# Selectăm doar coloanele numerice
+numeric_columns = df.select_dtypes(include=['float64', 'int64']).columns
+df_vif = df[numeric_columns]
+
+# Calculăm VIF pentru fiecare variabilă numerică
+vif_data = pd.DataFrame()
+vif_data["Variable"] = df_vif.columns
+vif_data["VIF"] = [variance_inflation_factor(df_vif.values, i) for i in range(df_vif.shape[1])]
+
+# Afișăm rezultatul
+print(vif_data)
+
+# Eliminăm variabilele cu VIF foarte mare (>10)
+df_vif_reduced = df_vif.drop(columns=["decision_outcome1"])
+
+# Recalculăm VIF
+vif_data_reduced = pd.DataFrame()
+vif_data_reduced["Variable"] = df_vif_reduced.columns
+vif_data_reduced["VIF"] = [variance_inflation_factor(df_vif_reduced.values, i) for i in range(df_vif_reduced.shape[1])]
+
+# Afișăm noul VIF
+print(vif_data_reduced)
+
+# Calculăm toleranța pentru fiecare variabilă
+vif_data_reduced["Tolerance"] = 1 / vif_data_reduced["VIF"]
+print(vif_data_reduced)
+
+from sklearn.decomposition import PCA
+import pandas as pd
+
+# Lista de variabile folosite în PCA
+vars_for_pca = ["edge_processing_latency", "decision_accuracy", "transaction_efficiency"]
+
+# Reîncarcă datele dacă ai salvat anterior df original
+# df = pd.read_csv(...) sau df = original_df.copy()
+
+# Aplică PCA fără să ștergi coloanele
+pca = PCA(n_components=1)
+pca.fit(df[vars_for_pca])
+
+# Extrage coeficienții (loadings)
+loadings = pd.Series(pca.components_[0], index=vars_for_pca)
+print(loadings)
+
+from sklearn.decomposition import PCA
+import pandas as pd
+
+# Selectăm variabilele pentru PCA
+vars_for_pca = ["edge_processing_latency", "decision_accuracy", "transaction_efficiency"]
+
+# Aplicăm PCA (o singură componentă principală)
+pca = PCA(n_components=1)
+df["performance_pca"] = pca.fit_transform(df[vars_for_pca])
+
+# Eliminăm variabilele originale care au fost combinate
+df = df.drop(columns=vars_for_pca)
+
+# Verificăm variabilă nouă și primele valori
+print(df[["performance_pca"]].head())
+
+# Verificăm câtă variație explică componenta PCA
+explained_variance = pca.explained_variance_ratio_[0]
+print(f"Proporția de variație explicată de performance_pca: {explained_variance:.4f}")
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+plt.figure(figsize=(10, 6))
+sns.histplot(df["performance_pca"], kde=True, bins=30, color="royalblue")
+plt.title("PCA value distribution - performance_pca")
+plt.xlabel("PCA Score")
+plt.ylabel("Frequency")
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Creăm figura
+plt.figure(figsize=(10, 6))
+
+# Histogramă cu densitate
+sns.histplot(df["performance_pca"], kde=True, bins=30, color="royalblue")
+
+# Titlu și axe
+plt.title("PCA Value Distribution - performance_pca")
+plt.xlabel("PCA Score")
+plt.ylabel("Frequency")
+
+# Adăugăm text cu proporția de variație explicată ca notă sub grafic
+explained_variance_text = f"Explained variance ratio: {pca.explained_variance_ratio_[0]:.4f}"
+plt.figtext(0.15, -0.05, explained_variance_text, wrap=True, horizontalalignment='left', fontsize=10)
+
+# Grilaj și ajustare aspect
+plt.grid(True)
+plt.tight_layout()
+
+# Afișăm graficul
+plt.show()
+
+# Extragem coeficienții PCA
+loadings = pd.Series(pca.components_[0], index=vars_for_pca)
+
+# Plot
+plt.figure(figsize=(8, 5))
+loadings.plot(kind='bar', color='teal')
+plt.title("Contribuția variabilelor la performance_pca")
+plt.ylabel("Coeficient PCA")
+plt.xlabel("Variabilă originală")
+plt.axhline(0, color='gray', linestyle='--')
+plt.tight_layout()
+plt.show()
+
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+import pandas as pd
+
+# Selectăm doar coloanele numerice (fără variabila dependentă dacă e în DataFrame)
+X = df.select_dtypes(include=["float64", "int64"]).copy()
+if "decision_outcome1" in X.columns:
+    X = X.drop(columns=["decision_outcome1"])
+
+# Calculăm VIF
+vif_data = pd.DataFrame()
+vif_data["Variable"] = X.columns
+vif_data["VIF"] = [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
+
+# Calculăm Toleranța
+vif_data["Tolerance"] = 1 / vif_data["VIF"]
+
+# Afișăm rezultatul
+print(vif_data)
+
+
+# Selectarea variabilelor independente și dependente
+X = df.drop(columns=['decision_outcome1'])  # Eliminarea variabilei țintă
+y = df['decision_outcome1']
+
+# Împărțirea setului de date în training și test
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+
+# Normalizarea variabilelor
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
+from sklearn.metrics import classification_report, confusion_matrix
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import roc_auc_score, confusion_matrix, classification_report
+
+# Selectăm variabilele independente și variabila dependentă
+X = df.drop(columns=["decision_outcome1"])  # Variabile independente
+y = df["decision_outcome1"]  # Variabila dependentă
+
+# Împărțim datele în 70% train și 30% test
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+
+# Standardizăm datele pentru Logistic Regression
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# Inițializăm și antrenăm modelul Logistic Regression
+log_reg = LogisticRegression()
+log_reg.fit(X_train_scaled, y_train)
+
+# Prezicem probabilitățile și etichetele
+y_pred_proba = log_reg.predict_proba(X_test_scaled)[:, 1]  # Probabilitățile pentru clasa pozitivă
+y_pred = log_reg.predict(X_test_scaled)  # Etichetele clasificate
+
+# Calculăm metricile de evaluare
+auc_score = roc_auc_score(y_test, y_pred_proba)
+conf_matrix = confusion_matrix(y_test, y_pred)
+class_report = classification_report(y_test, y_pred)
+
+# Afișăm rezultatele
+print(f"AUC-ROC Score: {auc_score:.4f}")
+print("\nConfusion Matrix:")
+print(conf_matrix)
+print("\nClassification Report:")
+print(class_report)
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import roc_auc_score, confusion_matrix, classification_report
+
+# Selectăm doar variabilele specificate
+selected_features = [
+    "market_behavior_index",
+    "financial_metric",
+    "workload_distribution_efficiency",
+    #"latency_per_transaction",
+    #"utilization_to_efficiency_ratio",
+    "edge_processing_latency",
+    "resource_utilization",
+    "system_throughput",
+    "transaction_volume",
+    "decision_accuracy"
+]
+
+X = df[selected_features]  # Variabile independente
+y = df["decision_outcome1"]  # Variabila dependentă
+
+# Împărțim datele în 70% train și 30% test
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y)
+
+# Standardizăm datele pentru Logistic Regression
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# Inițializăm și antrenăm modelul Logistic Regression
+log_reg = LogisticRegression()
+log_reg.fit(X_train_scaled, y_train)
+
+# Prezicem probabilitățile și etichetele
+y_pred_proba = log_reg.predict_proba(X_test_scaled)[:, 1]  # Probabilitățile pentru clasa pozitivă
+y_pred = log_reg.predict(X_test_scaled)  # Etichetele clasificate
+
+# Calculăm metricile de evaluare
+auc_score = roc_auc_score(y_test, y_pred_proba)
+conf_matrix = confusion_matrix(y_test, y_pred)
+class_report = classification_report(y_test, y_pred)
+
+# Afișăm rezultatele
+print(f"AUC-ROC Score: {auc_score:.4f}")
+print("\nConfusion Matrix:")
+print(conf_matrix)
+print("\nClassification Report:")
+print(class_report)
+
+from sklearn.neural_network import MLPClassifier
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import roc_auc_score, confusion_matrix, classification_report
+
+# Variabilele selectate
+selected_features = [
+   "market_behavior_index",
+    "financial_metric",
+    "workload_distribution_efficiency",
+    #"latency_per_transaction",
+    #"utilization_to_efficiency_ratio",
+    "edge_processing_latency", "resource_utilization", "system_throughput", "transaction_volume", "decision_accuracy"
+]
+
+# Seturi de date
+X = df[selected_features]
+y = df["decision_outcome1"]
+
+# Împărțim datele în 70/30
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.3, random_state=42, stratify=y
+)
+
+# Standardizăm datele – obligatoriu pentru Neural Networks
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+# Inițializăm și antrenăm MLPClassifier
+mlp_model = MLPClassifier(hidden_layer_sizes=(50,), max_iter=1000, random_state=42)
+mlp_model.fit(X_train_scaled, y_train)
+
+# Predicții
+y_pred_mlp = mlp_model.predict(X_test_scaled)
+y_proba_mlp = mlp_model.predict_proba(X_test_scaled)[:, 1]
+
+# Evaluare
+print("AUC-ROC Score (Neural Network):", roc_auc_score(y_test, y_proba_mlp))
+print("\nConfusion Matrix (Neural Network):")
+print(confusion_matrix(y_test, y_pred_mlp))
+print("\nClassification Report (Neural Network):")
+print(classification_report(y_test, y_pred_mlp))
+
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import roc_auc_score, confusion_matrix, classification_report
+
+# Inițializăm modelul Random Forest
+rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
+
+# Împărțim datele în 70% train și 30% test
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y)
+
+# Antrenăm modelul pe setul de antrenament
+rf_model.fit(X_train, y_train)
+
+# Prezicem probabilitățile și etichetele
+y_pred_proba_rf = rf_model.predict_proba(X_test)[:, 1]  # Probabilitățile pentru clasa pozitivă
+y_pred_rf = rf_model.predict(X_test)  # Etichetele clasificate
+
+# Calculăm metricile de evaluare
+auc_score_rf = roc_auc_score(y_test, y_pred_proba_rf)
+conf_matrix_rf = confusion_matrix(y_test, y_pred_rf)
+class_report_rf = classification_report(y_test, y_pred_rf)
+
+# Afișăm rezultatele
+print(f"AUC-ROC Score (Random Forest): {auc_score_rf:.4f}")
+print("\nConfusion Matrix (Random Forest):")
+print(conf_matrix_rf)
+print("\nClassification Report (Random Forest):")
+print(class_report_rf)
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Extragem importanța caracteristicilor
+rf_importance = rf_model.feature_importances_
+
+# Creăm un DataFrame pentru vizualizare
+feature_importance_df = pd.DataFrame({
+    "Feature": X_test.columns,
+    "Importance": rf_importance
+}).set_index("Feature")
+
+# Sortăm caracteristicile după importanță
+feature_importance_df = feature_importance_df.sort_values(by="Importance", ascending=False)
+
+# Creăm un barplot pentru importanța caracteristicilor
+plt.figure(figsize=(12, 6))
+feature_importance_df.plot(kind="bar", colormap="coolwarm", alpha=0.8)
+plt.title("Feature Importance (Random Forest)")
+plt.ylabel("Importance Score")
+plt.xlabel("Features")
+plt.xticks(rotation=45, ha="right")
+plt.grid(axis="y", linestyle="--", alpha=0.7)
+plt.legend(title="Models")
+plt.tight_layout()
+plt.show()
+
+from xgboost import XGBClassifier
+from sklearn.metrics import roc_auc_score, confusion_matrix, classification_report
+
+# Inițializăm modelul XGBoost
+xgb_model = XGBClassifier(eval_metric="logloss", random_state=42)
+
+# Împărțim datele în 70% train și 30% test
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y)
+
+# Antrenăm modelul pe setul de antrenament
+xgb_model.fit(X_train, y_train)
+
+# Prezicem probabilitățile și etichetele
+y_pred_proba_xgb = xgb_model.predict_proba(X_test)[:, 1]  # Probabilitățile pentru clasa pozitivă
+y_pred_xgb = xgb_model.predict(X_test)  # Etichetele clasificate
+
+# Calculăm metricile de evaluare
+auc_score_xgb = roc_auc_score(y_test, y_pred_proba_xgb)
+conf_matrix_xgb = confusion_matrix(y_test, y_pred_xgb)
+class_report_xgb = classification_report(y_test, y_pred_xgb)
+
+# Afișăm rezultatele
+print(f"AUC-ROC Score (XGBoost): {auc_score_xgb:.4f}")
+print("\nConfusion Matrix (XGBoost):")
+print(conf_matrix_xgb)
+print("\nClassification Report (XGBoost):")
+print(class_report_xgb)
+
+from sklearn.ensemble import GradientBoostingClassifier
+
+model_gb = GradientBoostingClassifier(random_state=42)
+model_gb.fit(X_train, y_train)
+y_pred_gb = model_gb.predict(X_test)
+y_prob_gb = model_gb.predict_proba(X_test)[:, 1]
+
+print("AUC-ROC (Gradient Boosting):", roc_auc_score(y_test, y_prob_gb))
+print(confusion_matrix(y_test, y_pred_gb))
+print(classification_report(y_test, y_pred_gb))
+
+from sklearn.svm import SVC
+
+from sklearn.pipeline import make_pipeline
+model_svm = make_pipeline(StandardScaler(), SVC(probability=True, kernel='rbf', random_state=42))
+model_svm.fit(X_train, y_train)
+
+y_pred_svm = model_svm.predict(X_test)
+y_prob_svm = model_svm.predict_proba(X_test)[:, 1]
+
+print("AUC-ROC (SVM RBF):", roc_auc_score(y_test, y_prob_svm))
+print(confusion_matrix(y_test, y_pred_svm))
+print(classification_report(y_test, y_pred_svm))
+
